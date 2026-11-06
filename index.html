@@ -186,7 +186,7 @@
       ctx.fillStyle = css(col); ctx.fillText(p.text, ax, ay);
     }
     // name in the middle, fades in after the heart is done
-    if (name && t > DURATION * 0.8) {
+     if (false) {
       var a = clamp((t - DURATION * 0.8) / 2500), fs = window._fs || 1;
       var size = Math.min(W * 0.14, 46 * fs * 1.4);
       ctx.font = "bold " + size + "px Georgia, serif";
