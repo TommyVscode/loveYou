@@ -1,275 +1,217 @@
-import math as m
-import random as r
-import turtle as t
-import tkinter.font as tkf
-
-SC = 21
-OY = 20
-DURATION = 10
-TICK = 16
-ANIM = 42
-LIFT = 34
-GAP = 7
-SIZES = (9, 10, 11, 12)
-FONT = "Arial"
-BG = "#060208"
-
-s = t.Screen()
-s.setup(800, 800)
-s.bgcolor(BG)
-s.title("Love Heart")
-s.tracer(0)
-
-cv = s.getcanvas()
-rng = r.Random(11)
-
-PHRASES = [
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Love Heart</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #060208; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(function () {
+  var BG = [6 / 255, 2 / 255, 8 / 255];
+  var FLASH = [1, 0.78, 0.78];
+  var DURATION = 10000, ANIM = 672, FONT = "Arial", SIZES = [9, 10, 11, 12];
+  var PHRASES = [
     "I love you", "Seni seviyorum", "Te amo", "Je t'aime",
     "Ich liebe dich", "Ti amo", "Eu te amo", "Я тебя люблю",
     "사랑해", "愛してる", "我爱你", "मैं तुमसे प्यार करता हूँ",
     "Σ' αγαπώ", "Ik hou van jou", "Jag älskar dig", "Kocham cię",
-    "ฉันรักเธอ", "Anh yêu em", "Aku cinta kamu", "Я тебе кохаю",
-    "Gungun", "Gungun", "Gungun",
-]
+    "ฉันรักเธอ", "Anh yêu em", "Aku cinta kamu", "Я тебе кохаю"
+  ];
 
-_fonts = {}
+  // ?name=TarNam
+  var name = (new URLSearchParams(location.search).get("name") || "Gungun").trim().slice(0, 30);
+  if (name) document.title = name + " ❤";
 
+  var cv = document.getElementById("c"), ctx = cv.getContext("2d");
+  var W, H, items = [], CYc = 0, startTime = 0, shimmerId = null, shimmerUntil = 0;
 
-def font_for(size):
-    if size not in _fonts:
-        _fonts[size] = tkf.Font(
-            root=cv, family=FONT, size=size, weight="bold"
-        )
-    return _fonts[size]
+  function seeded(a) { // mulberry32
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  var clamp = function (v) { return Math.max(0, Math.min(1, v)); };
+  var mix = function (a, b, k) { return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]; };
+  var dim = function (c, k) { return [c[0] * k, c[1] * k, c[2] * k]; };
+  var css = function (c) { return "rgb(" + c.map(function (v) { return Math.round(clamp(v) * 255); }).join(",") + ")"; };
 
+  function build() {
+    var rng = seeded(11);
+    var S = Math.min(W, H) / 800;
+    var fs = Math.max(S, 0.85);
+    var SC = 21 * S, OY = 20 * S, GAP = 7 * fs;
+    var px = function (z) { return z * 1.333 * fs; };
+    var fontOf = function (z) { return "bold " + px(z) + "px " + FONT + ", sans-serif"; };
 
-def heart(a):
-    x = 16 * (m.sin(a) ** 3)
-    y = (
-        13 * m.cos(a)
-        - 5 * m.cos(2 * a)
-        - 2 * m.cos(3 * a)
-        - m.cos(4 * a)
-    )
-    return x * SC, y * SC + OY
+    function heart(a) {
+      var x = 16 * Math.pow(Math.sin(a), 3);
+      var y = 13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a);
+      return [x * SC, y * SC + OY];
+    }
+    var POLY = [];
+    for (var i = 0; i < 720; i++) POLY.push(heart(2 * Math.PI * i / 720));
+    var EDGES = POLY.map(function (p, i) { return [p, POLY[(i + 1) % 720]]; });
+    var YMAX = Math.max.apply(null, POLY.map(function (p) { return p[1]; }));
+    var YMIN = Math.min.apply(null, POLY.map(function (p) { return p[1]; }));
+    var CY = (YMAX + YMIN) / 2;
+    CYc = CY;
 
+    function spans(y) {
+      var xs = [];
+      EDGES.forEach(function (e) {
+        var x1 = e[0][0], y1 = e[0][1], x2 = e[1][0], y2 = e[1][1];
+        if ((y1 <= y && y < y2) || (y2 <= y && y < y1)) xs.push(x1 + (y - y1) * (x2 - x1) / (y2 - y1));
+      });
+      xs.sort(function (a, b) { return a - b; });
+      var out = [];
+      for (var k = 0; k + 1 < xs.length; k += 2) out.push([xs[k], xs[k + 1]]);
+      return out;
+    }
+    function intersect(A, B) {
+      var out = [];
+      A.forEach(function (a) { B.forEach(function (b) {
+        var lo = Math.max(a[0], b[0]), hi = Math.min(a[1], b[1]);
+        if (hi - lo > 14 * fs) out.push([lo, hi]);
+      }); });
+      return out;
+    }
 
-def hx(c):
-    return "#%02x%02x%02x" % tuple(
-        int(max(0, min(1, v)) * 255) for v in c
-    )
+    // phrases (name added several times so it shows up in the heart)
+    var list = PHRASES.slice();
+    if (name) for (var n = 0; n < 4; n++) list.push(name);
+    var queue = [];
+    function nextPhrase() {
+      if (!queue.length) {
+        queue = list.slice();
+        for (var i = queue.length - 1; i > 0; i--) {
+          var j = Math.floor(rng() * (i + 1)), t = queue[i]; queue[i] = queue[j]; queue[j] = t;
+        }
+      }
+      return queue.pop();
+    }
 
+    var rowH = px(12) * 1.25 + 4, half = rowH / 2, placed = [];
+    var y = YMAX - half;
+    while (y > YMIN + half) {
+      var row = intersect(spans(y + half), spans(y - half));
+      row.forEach(function (seg) {
+        var lo = seg[0] + 4, hi = seg[1] - 4, cur = lo + rng() * 8, line = [];
+        for (;;) {
+          var fit = null;
+          for (var tries = 0; tries < 10; tries++) {
+            var text = nextPhrase(), size = SIZES[Math.floor(rng() * SIZES.length)];
+            ctx.font = fontOf(size);
+            var w = ctx.measureText(text).width;
+            if (cur + w <= hi) { fit = [text, size, w]; break; }
+          }
+          if (!fit) break;
+          line.push([cur + fit[2] / 2, fit[0], fit[1], fit[2]]);
+          cur += fit[2] + GAP;
+        }
+        if (!line.length) return;
+        if (line.length > 1) {
+          var last = line[line.length - 1];
+          var left = hi - (last[0] + last[3] / 2);
+          line.forEach(function (it, i) { it[0] += left * i / (line.length - 1); });
+        } else line[0][0] = (lo + hi) / 2;
+        line.forEach(function (it, i) {
+          placed.push({ x: it[0], y: y, text: it[1], size: it[2], edge: i === 0 || i === line.length - 1 });
+        });
+      });
+      y -= rowH;
+    }
 
-def mix(a, b, k):
-    return tuple(p + (q - p) * k for p, q in zip(a, b))
+    var wine = [0.58, 0, 0.09], crimson = [0.90, 0.05, 0.14], blood = [0.98, 0.10, 0.16];
+    placed.forEach(function (p) {
+      var rad = Math.min(1, Math.hypot(p.x / (16 * SC), (p.y - CY) / (14.5 * SC)));
+      var base = mix(wine, crimson, 0.25 + 0.75 * rad);
+      base = mix(base, blood, rng() * 0.35 + (p.edge ? 0.3 : 0));
+      p.color = base; p.rad = rad; p.font = fontOf(p.size); p.bigFont = fontOf(p.size + 1);
+      p.dx = (rng() * 20 - 10) * fs;
+    });
+    var edges = placed.filter(function (p) { return p.edge; });
+    var inner = placed.filter(function (p) { return !p.edge; });
+    edges.sort(function (a, b) {
+      var A = Math.atan2(a.x, a.y - CY), B = Math.atan2(b.x, b.y - CY), T = 2 * Math.PI;
+      return ((A % T) + T) % T - (((B % T) + T) % T);
+    });
+    inner.forEach(function (p) { p.k = -p.rad + rng() * 0.08; });
+    inner.sort(function (a, b) { return a.k - b.k; });
+    items = edges.concat(inner);
+    items.forEach(function (p, i) { p.start = i / items.length * DURATION; p.lift = 34 * fs; });
+    window._fs = fs;
+  }
 
+  function resize() {
+    var dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    build();
+    startTime = performance.now();
+  }
 
-def dim(c, k):
-    return tuple(v * k for v in c)
+  function frame(now) {
+    var t = now - startTime;
+    ctx.fillStyle = css(BG); ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.translate(W / 2, H / 2 - 0); // origin at center, y flipped below
+    var done = true;
+    for (var i = 0; i < items.length; i++) {
+      var p = items[i];
+      if (t < p.start) { done = false; continue; }
+      var u = clamp((t - p.start) / ANIM), e = 1 - Math.pow(1 - u, 3);
+      if (u < 1) done = false;
+      var x = p.x, yy = -p.y;
+      var hover = (1 - e) * p.lift, ax = x + p.dx * (1 - e), ay = yy - hover;
+      var flash = u < 1 ? 0.75 * Math.sin(Math.PI * clamp((u - 0.55) / 0.45)) : 0;
+      var col = mix(mix(BG, p.color, Math.pow(e, 1.5)), FLASH, flash);
+      if (u >= 1 && p.id === shimmerId && now < shimmerUntil) col = mix(p.color, FLASH, 0.6);
+      else if (u >= 1) col = p.color;
+      ctx.font = p.font;
+      ctx.fillStyle = css(mix(BG, dim(p.color, 0.30), e)); ctx.fillText(p.text, ax + 2, ay + 3);
+      ctx.font = p.bigFont;
+      ctx.fillStyle = css(mix(BG, dim(p.color, 0.20), e * e)); ctx.fillText(p.text, ax, ay);
+      ctx.font = p.font;
+      ctx.fillStyle = css(col); ctx.fillText(p.text, ax, ay);
+    }
+    // name in the middle, fades in after the heart is done
+    if (name && t > DURATION * 0.8) {
+      var a = clamp((t - DURATION * 0.8) / 2500), fs = window._fs || 1;
+      var size = Math.min(W * 0.14, 46 * fs * 1.4);
+      ctx.font = "bold " + size + "px Georgia, serif";
+      ctx.globalAlpha = a;
+      ctx.shadowColor = css(BG); ctx.shadowBlur = 22;
+      ctx.fillStyle = css(BG);
+      for (var s = 0; s < 4; s++) ctx.fillText(name, 0, -CYc);
+      ctx.shadowColor = "rgba(255,120,140,0.9)"; ctx.shadowBlur = 14;
+      ctx.fillStyle = "#fff0f2"; ctx.fillText(name, 0, -CYc);
+      ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    if (done && items.length && now - (frame.last || 0) > 140) {
+      var pick = Math.floor(Math.random() * items.length);
+      items.forEach(function (q, i) { q.id = i; });
+      shimmerId = pick; shimmerUntil = now + 260; frame.last = now;
+    }
+    requestAnimationFrame(frame);
+  }
 
-
-POLY = [heart(2 * m.pi * i / 720) for i in range(720)]
-EDGES = list(zip(POLY, POLY[1:] + POLY[:1]))
-YMAX = max(p[1] for p in POLY)
-YMIN = min(p[1] for p in POLY)
-CY = (YMAX + YMIN) / 2
-
-
-def spans(y):
-    xs = []
-    for (x1, y1), (x2, y2) in EDGES:
-        if (y1 <= y < y2) or (y2 <= y < y1):
-            xs.append(x1 + (y - y1) * (x2 - x1) / (y2 - y1))
-    xs.sort()
-    return list(zip(xs[0::2], xs[1::2]))
-
-
-def intersect(A, B):
-    out = []
-    for a in A:
-        for b in B:
-            lo, hi = max(a[0], b[0]), min(a[1], b[1])
-            if hi - lo > 14:
-                out.append((lo, hi))
-    return out
-
-
-def phrase_cycle():
-    while True:
-        order = PHRASES[:]
-        rng.shuffle(order)
-        yield from order
-
-
-def build():
-    cycle = phrase_cycle()
-    row_h = max(font_for(z).metrics("linespace") for z in SIZES) + 4
-    half = row_h / 2
-    placed = []
-
-    y = YMAX - half
-    while y > YMIN + half:
-        row = intersect(spans(y + half), spans(y - half))
-
-        for lo, hi in row:
-            lo += 4
-            hi -= 4
-            cur = lo + rng.uniform(0, 8)
-            line = []
-
-            while True:
-                fit = None
-                for _ in range(10):
-                    text = next(cycle)
-                    size = rng.choice(SIZES)
-                    w = font_for(size).measure(text)
-                    if cur + w <= hi:
-                        fit = (text, size, w)
-                        break
-                if not fit:
-                    break
-                text, size, w = fit
-                line.append([cur + w / 2, text, size, w])
-                cur += w + GAP
-
-            if not line:
-                continue
-
-            if len(line) > 1:
-                left = hi - (line[-1][0] + line[-1][3] / 2)
-                for i, it in enumerate(line):
-                    it[0] += left * i / (len(line) - 1)
-            else:
-                line[0][0] = (lo + hi) / 2
-
-            for i, (x, text, size, w) in enumerate(line):
-                edge = i == 0 or i == len(line) - 1
-                placed.append(dict(x=x, y=y, text=text, size=size, edge=edge))
-
-        y -= row_h
-
-    wine = (0.58, 0.0, 0.09)
-    crimson = (0.90, 0.05, 0.14)
-    blood = (0.98, 0.10, 0.16)
-    for p in placed:
-        rad = min(1.0, math_dist(p["x"], p["y"]))
-        base = mix(wine, crimson, 0.25 + 0.75 * rad)
-        base = mix(base, blood, rng.uniform(0, 0.35) + (0.3 if p["edge"] else 0))
-        p["color"] = tuple(min(1, v) for v in base)
-        p["rad"] = rad
-
-    edges = [p for p in placed if p["edge"]]
-    inner = [p for p in placed if not p["edge"]]
-    edges.sort(key=lambda p: m.atan2(p["x"], p["y"] - CY) % (2 * m.pi))
-    inner.sort(key=lambda p: -p["rad"] + rng.uniform(0, 0.08))
-    return edges + inner
-
-
-def math_dist(x, y):
-    return m.hypot(x / (16 * SC), (y - CY) / (14.5 * SC))
-
-
-FLASH = (1.0, 0.78, 0.78)
-main_ids = []
-active = []
-tick_no = 0
-
-
-def clamp(v):
-    return max(0.0, min(1.0, v))
-
-
-def spawn(p):
-    x, y = p["x"], -p["y"]
-    size, text, c = p["size"], p["text"], p["color"]
-    font = (FONT, size, "bold")
-    big = (FONT, size + 1, "bold")
-
-    shadow = cv.create_text(x + 2, y + 3, text=text, font=font, fill=BG)
-    halo = cv.create_text(x, y, text=text, font=big, fill=BG)
-    main = cv.create_text(x, y - LIFT, text=text, font=font, fill=BG)
-
-    p.update(shadow=shadow, halo=halo, main=main,
-             f=0, dx=rng.uniform(-10, 10))
-    main_ids.append((main, c))
-    active.append(p)
-
-
-def animate(p):
-    p["f"] += 1
-    u = clamp(p["f"] / ANIM)
-    e = 1 - (1 - u) ** 3
-    c = p["color"]
-    x, y = p["x"], -p["y"]
-    hover = (1 - e) * LIFT
-    px = x + p["dx"] * (1 - e)
-    py = y - hover
-
-    cv.itemconfig(p["shadow"], fill=hx(mix(BGC, dim(c, 0.30), e)))
-    cv.itemconfig(p["halo"], fill=hx(mix(BGC, dim(c, 0.20), e * e)))
-    cv.coords(p["halo"], px, py)
-
-    flash = 0.75 * math_sin(clamp((u - 0.55) / 0.45))
-    col = mix(mix(BGC, c, e ** 1.5), FLASH, flash)
-    cv.itemconfig(p["main"], fill=hx(col))
-    cv.coords(p["main"], px, py)
-
-    if u >= 1:
-        cv.coords(p["halo"], x, y)
-        cv.coords(p["main"], x, y)
-        cv.itemconfig(p["main"], fill=hx(c))
-        return False
-    return True
-
-
-def math_sin(v):
-    return m.sin(m.pi * v)
-
-
-BGC = tuple(int(BG[i:i + 2], 16) / 255 for i in (1, 3, 5))
-ORDER = build()
-items = iter(ORDER)
-RATE = len(ORDER) / (DURATION * 1000 / TICK)
-acc = 0.0
-spawning = True
-
-
-def step():
-    global spawning, acc
-    if spawning:
-        acc += RATE
-        try:
-            while acc >= 1:
-                acc -= 1
-                spawn(next(items))
-        except StopIteration:
-            spawning = False
-
-    active[:] = [p for p in active if animate(p)]
-
-    if not spawning and not active:
-        shimmer()
-        return
-    cv.after(TICK, step)
-
-
-def _safe(i, c):
-    try:
-        cv.itemconfig(i, fill=hx(c))
-    except Exception:
-        pass
-
-
-def shimmer():
-    for _ in range(1):
-        i, c = rng.choice(main_ids)
-        _safe(i, mix(c, FLASH, 0.6))
-        cv.after(260, lambda i=i, c=c: _safe(i, c))
-    cv.after(140, shimmer)
-
-
-try:
-    cv.after(200, step)
-    t.done()
-except (t.Terminator, Exception):
-    pass
+  var rt;
+  window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(resize, 200); });
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
