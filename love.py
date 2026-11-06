@@ -29,6 +29,7 @@ PHRASES = [
     "사랑해", "愛してる", "我爱你", "मैं तुमसे प्यार करता हूँ",
     "Σ' αγαπώ", "Ik hou van jou", "Jag älskar dig", "Kocham cię",
     "ฉันรักเธอ", "Anh yêu em", "Aku cinta kamu", "Я тебе кохаю",
+    "Gungun", "Gungun", "Gungun",
 ]
 
 _fonts = {}
